@@ -1,0 +1,1069 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>az-forge · AlphaZero 从零学下 Connect-4</title>
+<style>
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{
+  background:#0f1117;color:#e6e8ee;
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+  font-size:14px;line-height:1.55;padding:0 0 40px
+}
+.wrap{max-width:1180px;margin:0 auto;padding:0 18px}
+h1{font-size:20px;margin:0;padding:18px 0 4px;font-weight:650;letter-spacing:.2px}
+h1 .sub{font-size:12px;color:#8b93a7;font-weight:400;margin-left:8px}
+h2{font-size:14px;margin:20px 0 8px;color:#b8c0d4;font-weight:600;
+   border-left:3px solid #4d7cfe;padding-left:8px}
+.card{background:#161a23;border:1px solid #242a38;border-radius:10px;padding:14px}
+.grid{display:grid;grid-template-columns:400px 1fr;gap:16px;align-items:start}
+@media (max-width:940px){.grid{grid-template-columns:1fr}}
+canvas{display:block;border-radius:8px;background:#0b0d13;cursor:pointer;touch-action:none}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:10px 0}
+button{
+  background:#222836;color:#e6e8ee;border:1px solid #303748;border-radius:7px;
+  padding:7px 13px;font-size:13px;cursor:pointer;font-family:inherit;transition:.12s
+}
+button:hover:not(:disabled){background:#2c3350;border-color:#3d4661}
+button:disabled{opacity:.42;cursor:not-allowed}
+button.pri{background:#2f5fd0;border-color:#3f6fe0}
+button.pri:hover:not(:disabled){background:#3a6ce0}
+button.stop{background:#5a2733;border-color:#7a3544}
+button.stop:hover:not(:disabled){background:#6e2f3d}
+label{font-size:12px;color:#98a0b5;display:flex;flex-direction:column;gap:3px}
+input[type=range]{width:120px;accent-color:#4d7cfe}
+input[type=number]{width:62px;background:#0f131c;border:1px solid #2a3142;color:#e6e8ee;
+  border-radius:5px;padding:4px 6px;font-family:inherit}
+select{background:#0f131c;border:1px solid #2a3142;color:#e6e8ee;border-radius:6px;
+  padding:5px 8px;font-family:inherit;font-size:13px}
+.kv{display:grid;grid-template-columns:repeat(auto-fill,minmax(112px,1fr));gap:8px}
+.kv div{background:#101420;border:1px solid #222839;border-radius:7px;padding:7px 9px}
+.kv b{display:block;font-size:16px;font-weight:600;color:#dfe4f0;font-variant-numeric:tabular-nums}
+.kv span{font-size:11px;color:#8b93a7}
+#log{background:#0b0e15;border:1px solid #202636;border-radius:8px;padding:10px;
+  height:196px;overflow-y:auto;font-family:ui-monospace,Consolas,monospace;font-size:12px;
+  white-space:pre-wrap;color:#a8b2c8;line-height:1.5}
+#log .ok{color:#5fd39a}#log .no{color:#ff7b8a}#log .hi{color:#7fb3ff}
+.bar{height:7px;background:#1b2130;border-radius:4px;overflow:hidden;margin-top:5px}
+.bar i{display:block;height:100%;background:#4d7cfe;width:0;transition:width .2s}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th,td{text-align:left;padding:6px 8px;border-bottom:1px solid #222839}
+th{color:#8b93a7;font-weight:500;font-size:12px}
+td.p{color:#5fd39a}td.f{color:#ff7b8a}
+.pill{display:inline-block;padding:1px 8px;border-radius:20px;font-size:11px;
+  background:#1e2536;color:#93b4ff;border:1px solid #2c3a58}
+.note{font-size:12px;color:#7d8598;margin-top:8px}
+.big{font-size:26px;font-weight:600;font-variant-numeric:tabular-nums}
+.win{color:#5fd39a}.lose{color:#ff7b8a}.draw{color:#d7c46a}
+
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>az-forge<span class="sub">AlphaZero 风格自我对弈 + MCTS · 零依赖 · 浏览器内训练</span></h1>
+
+  <div class="grid">
+    <div class="card">
+      <h2>对局（你执红先手）</h2>
+      <canvas id="board"></canvas>
+      <div class="row" style="margin-top:10px">
+        <span id="stTurn" style="font-size:13px">—</span>
+      </div>
+      <div class="row">
+        <button id="btnNew">新对局</button>
+        <button id="btnReset">重置网络</button>
+        <label style="flex-direction:row;align-items:center;gap:6px">搜索
+          <select id="simsSel">
+            <option value="40">40</option>
+            <option value="80" selected>80</option>
+            <option value="160">160</option>
+            <option value="320">320</option>
+          </select>
+        </label>
+      </div>
+
+      <h2>自我对弈训练</h2>
+      <div class="row">
+        <label style="flex-direction:row;align-items:center;gap:6px">局数
+          <input id="iterIn" type="number" value="40" min="1" max="2000">
+        </label>
+        <button id="btnTrain" class="pri">开始训练</button>
+        <button id="btnStop" class="stop" disabled>停止</button>
+        <button id="btnEval">评估基线</button>
+      </div>
+      <div class="kv" style="margin-top:8px">
+        <div><b id="stGames">0</b><span>自我对弈局数</span></div>
+        <div><b id="stSteps">0</b><span>梯度步</span></div>
+        <div><b id="stBuf">0</b><span>样本缓冲</span></div>
+        <div><b id="stLoss">—</b><span>当前 loss</span></div>
+        <div><b id="stWin">—</b><span>vs 随机</span></div>
+        <div><b id="stGrd">—</b><span>vs 贪心</span></div>
+      </div>
+
+      <h2>MCTS 访问计数（AI 眼里的每一列）</h2>
+      <canvas id="visits"></canvas>
+
+      <h2>训练 loss 曲线</h2>
+      <canvas id="curve"></canvas>
+    </div>
+
+    <div class="card">
+      <h2>引擎自检（不变量 / 梯度检验 / 战术）</h2>
+      <div class="row">
+        <button id="btnTest" class="pri">运行自检</button>
+        <span id="testSum"></span>
+      </div>
+      <div id="testOut" style="font-size:13px;margin-top:6px"></div>
+
+      <h2>日志</h2>
+      <div id="log"></div>
+      <div class="note">
+        网络：2 通道输入 → 1×1/3×3 卷积 → 2 个残差块 → policy head（7 列）+ value head（tanh）。
+        全部前向/后向手写，12,246 参数，Float64Array。训练信号 100% 来自自我对弈，无任何人类棋谱。
+      </div>
+      <div class="note">
+        Loss = 交叉熵(π_MCTS ‖ π_网络) + MSE(v, z)。梯度检验用有限差分作金标准；
+        ReLU 网络在折点处 FD 不可测，故自检另用光滑激活网络验证同一套反向传播代码。
+      </div>
+    </div>
+  </div>
+</div>
+
+<script id="engine">
+/* az-forge engine — AlphaZero 风格自我对弈 + MCTS（Connect-4）
+   纯 Float64Array，零依赖。浏览器与 Node 通用，挂到 globalThis.IDF。 */
+(function (root) {
+  "use strict";
+
+  /* ---------------- RNG ---------------- */
+  function mulberry32(a) {
+    return function () {
+      a |= 0; a = (a + 0x6D2B79F5) | 0;
+      let t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+  function gauss(rnd) {
+    let u = 0, v = 0;
+    while (u === 0) u = rnd();
+    while (v === 0) v = rnd();
+    return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+  }
+  function gammaS(rnd, k) { // Marsaglia-Tsang
+    if (k < 1) return gammaS(rnd, k + 1) * Math.pow(rnd(), 1 / k);
+    const d = k - 1 / 3, c = 1 / Math.sqrt(9 * d);
+    for (; ;) {
+      let x, v;
+      do { x = gauss(rnd); v = 1 + c * x; } while (v <= 0);
+      v = v * v * v;
+      const u = rnd();
+      if (u < 1 - 0.0331 * x * x * x * x) return d * v;
+      if (Math.log(u) < 0.5 * x * x + d * (1 - v + Math.log(v))) return d * v;
+    }
+  }
+  function dirichlet(rnd, alpha, n, out) {
+    let s = 0;
+    for (let i = 0; i < n; i++) { out[i] = gammaS(rnd, alpha); s += out[i]; }
+    for (let i = 0; i < n; i++) out[i] /= s;
+  }
+
+  /* ---------------- 数值原语 ---------------- */
+  function matVec(W, bi, x, rows, cols, out) {
+    for (let r = 0; r < rows; r++) {
+      const b = r * cols; let s = bi ? bi[r] : 0;
+      for (let c = 0; c < cols; c++) s += W[b + c] * x[c];
+      out[r] = s;
+    }
+  }
+  function matVecT(W, x, rows, cols, out) {
+    for (let c = 0; c < cols; c++) {
+      let s = 0;
+      for (let r = 0; r < rows; r++) s += W[r * cols + c] * x[r];
+      out[c] = s;
+    }
+  }
+  function outerAdd(W, bi, x, dy, rows, cols) {
+    for (let r = 0; r < rows; r++) {
+      const a = dy[r];
+      if (a === 0) continue;
+      const b = r * cols;
+      for (let c = 0; c < cols; c++) W[b + c] += a * x[c];
+      if (bi) bi[r] += a;
+    }
+  }
+  // 卷积：W 索引 ((oc*ci+ic)*k+ky)*k+kx
+  function convF(x, w, bi, ci, co, H, Wi, k, pad, out) {
+    const Ho = H + 2 * pad - k + 1, Wo = Wi + 2 * pad - k + 1;
+    const sp = Ho * Wo, xsp = H * Wi;
+    for (let oc = 0; oc < co; oc++) {
+      const ob = oc * sp, b0 = bi ? bi[oc] : 0;
+      for (let oy = 0; oy < Ho; oy++) for (let ox = 0; ox < Wo; ox++) {
+        let s = b0;
+        for (let ic = 0; ic < ci; ic++) {
+          const xb = ic * xsp, wb = ((oc * ci + ic) * k) * k;
+          for (let ky = 0; ky < k; ky++) {
+            const yy = oy + ky - pad;
+            if (yy < 0 || yy >= H) continue;
+            const ry = yy * Wi, wr = wb + ky * k;
+            for (let kx = 0; kx < k; kx++) {
+              const xx = ox + kx - pad;
+              if (xx < 0 || xx >= Wi) continue;
+              s += x[xb + ry + xx] * w[wr + kx];
+            }
+          }
+        }
+        out[ob + oy * Wo + ox] = s;
+      }
+    }
+  }
+  function convB(x, w, dO, ci, co, H, Wi, k, pad, dX, dW, dB) {
+    const Ho = H + 2 * pad - k + 1, Wo = Wi + 2 * pad - k + 1;
+    const sp = Ho * Wo, xsp = H * Wi;
+    for (let oc = 0; oc < co; oc++) {
+      const ob = oc * sp;
+      for (let oy = 0; oy < Ho; oy++) for (let ox = 0; ox < Wo; ox++) {
+        const g = dO[ob + oy * Wo + ox];
+        if (g === 0) continue;
+        dB[oc] += g;
+        for (let ic = 0; ic < ci; ic++) {
+          const xb = ic * xsp, wb = ((oc * ci + ic) * k) * k;
+          for (let ky = 0; ky < k; ky++) {
+            const yy = oy + ky - pad;
+            if (yy < 0 || yy >= H) continue;
+            const ry = yy * Wi, wr = wb + ky * k;
+            for (let kx = 0; kx < k; kx++) {
+              const xx = ox + kx - pad;
+              if (xx < 0 || xx >= Wi) continue;
+              dW[wr + kx] += x[xb + ry + xx] * g;
+              dX[xb + ry + xx] += w[wr + kx] * g;
+            }
+          }
+        }
+      }
+    }
+  }
+  function reluF(x, n, out) { for (let i = 0; i < n; i++) out[i] = x[i] > 0 ? x[i] : 0; }
+  function reluB(pre, dO, n, out) { for (let i = 0; i < n; i++) out[i] = pre[i] > 0 ? dO[i] : 0; }
+  // act: "relu" | "tanh" | "id" —— 梯度检验时切到光滑激活可绕开 ReLU 折点伪影
+  function actF(x, n, out, act) {
+    if (act === "tanh") { for (let i = 0; i < n; i++) out[i] = Math.tanh(x[i]); }
+    else if (act === "id") { for (let i = 0; i < n; i++) out[i] = x[i]; }
+    else for (let i = 0; i < n; i++) out[i] = x[i] > 0 ? x[i] : 0;
+  }
+  function actB(pre, dO, n, out, act) {
+    if (act === "tanh") { for (let i = 0; i < n; i++) { const t = Math.tanh(pre[i]); out[i] = dO[i] * (1 - t * t); } }
+    else if (act === "id") { for (let i = 0; i < n; i++) out[i] = dO[i]; }
+    else for (let i = 0; i < n; i++) out[i] = pre[i] > 0 ? dO[i] : 0;
+  }
+  function softmax(x, n, out) {
+    let m = -1e300;
+    for (let i = 0; i < n; i++) if (x[i] > m) m = x[i];
+    let s = 0;
+    for (let i = 0; i < n; i++) { const e = Math.exp(x[i] - m); out[i] = e; s += e; }
+    for (let i = 0; i < n; i++) out[i] /= s;
+  }
+
+  /* ---------------- 网络 ---------------- */
+  // cfg: K 通道, NB 残差块, H/W 棋盘, PC policy 通道, VC value 通道, VH value 隐层
+  function createNet(opt) {
+    opt = opt || {};
+    const c = {
+      K: opt.K || 16, NB: opt.nb == null ? 2 : opt.nb,
+      H: opt.H || 6, W: opt.W || 7, PC: opt.pc || 4, VC: opt.vc || 2, VH: opt.vh || 16,
+      act: opt.act || "relu"
+    };
+    const net = { cfg: c, p: {}, g: {}, m: {}, vv: {}, keys: [], t: 0, _nb: {} };
+    const rnd = mulberry32(opt.seed == null ? 1234 : opt.seed);
+    function W(n, rows, cols) {
+      const a = new Float64Array(rows * cols), s = Math.sqrt(2 / cols);
+      for (let i = 0; i < a.length; i++) a[i] = gauss(rnd) * s;
+      net.p[n] = a; net.g[n] = new Float64Array(a.length);
+      net.m[n] = new Float64Array(a.length); net.vv[n] = new Float64Array(a.length);
+      net.keys.push(n);
+    }
+    function B(n, rows) {
+      net.p[n] = new Float64Array(rows); net.g[n] = new Float64Array(rows);
+      net.m[n] = new Float64Array(rows); net.vv[n] = new Float64Array(rows);
+      net.keys.push(n);
+    }
+    const sp = c.H * c.W;
+    W("cin", c.K * 1, 2 * 9); B("b_cin", c.K);              // 2 in, k=3
+    for (let i = 0; i < c.NB; i++) {
+      W("r" + i + "a", c.K * 1, c.K * 9); B("b_r" + i + "a", c.K);
+      W("r" + i + "b", c.K * 1, c.K * 9); B("b_r" + i + "b", c.K);
+    }
+    W("pc", c.PC * 1, c.K); B("b_pc", c.PC);
+    W("pf", c.W, c.PC * sp); B("b_pf", c.W);
+    W("vc", c.VC * 1, c.K); B("b_vc", c.VC);
+    W("vf1", c.VH, c.VC * sp); B("b_vf1", c.VH);
+    W("vf2", 1, c.VH); B("b_vf2", 1);
+    return net;
+  }
+  function nb(net, name, n, keep) {
+    if (keep) return new Float64Array(n);
+    const b = net._nb;
+    if (!b[name] || b[name].length !== n) b[name] = new Float64Array(n);
+    return b[name];
+  }
+
+  // planes: (2,H,W) 归一化到 ±1;  mask: 长度 W 的 0/1（可选）
+  function forward(net, planes, mask, keep) {
+    const c = net.cfg, K = c.K, H = c.H, W = c.W, sp = H * W;
+    const P = net.p;
+    const cache = keep ? { planes: planes } : null;
+    const M = keep ? (n, k) => new Float64Array(n) : ((n, k) => nb(net, k, n, false));
+
+    const act = c.act;
+    let cur = M(K * sp, "cin");
+    convF(planes, P.cin, P.b_cin, 2, K, H, W, 3, 1, cur);
+    if (keep) cache.cin = cur;
+    let a = M(K * sp, "acin"); actF(cur, K * sp, a, act);
+    if (keep) cache.blk = [];
+
+    for (let i = 0; i < c.NB; i++) {
+      const inp = a;
+      let p1 = M(K * sp, "p1_" + i);
+      convF(inp, P["r" + i + "a"], P["b_r" + i + "a"], K, K, H, W, 3, 1, p1);
+      let a1 = M(K * sp, "a1_" + i); actF(p1, K * sp, a1, act);
+      let p2 = M(K * sp, "p2_" + i);
+      convF(a1, P["r" + i + "b"], P["b_r" + i + "b"], K, K, H, W, 3, 1, p2);
+      let pre = M(K * sp, "pre_" + i);
+      for (let j = 0; j < K * sp; j++) pre[j] = p2[j] + inp[j];
+      let out = M(K * sp, "o_" + i);
+      actF(pre, K * sp, out, act);
+      if (keep) cache.blk.push({ inp: inp, p1: p1, a1: a1, pre: keep ? pre.slice() : pre });
+      a = out;
+    }
+    if (keep) cache.last = a;
+
+    // policy head
+    let pz = M(c.PC * sp, "pz");
+    convF(a, P.pc, P.b_pc, K, c.PC, H, W, 1, 0, pz);
+    if (keep) cache.pc = pz;
+    let pa = M(c.PC * sp, "pa"); actF(pz, c.PC * sp, pa, act);
+    if (keep) cache.pa = pa;
+    const logits = M(W, "logits");
+    matVec(P.pf, P.b_pf, pa, W, c.PC * sp, logits);
+    if (mask) for (let i = 0; i < W; i++) if (!mask[i]) logits[i] = -1e9;
+    const probs = M(W, "probs"); softmax(logits, W, probs);
+
+    // value head
+    let vz = M(c.VC * sp, "vz");
+    convF(a, P.vc, P.b_vc, K, c.VC, H, W, 1, 0, vz);
+    if (keep) cache.vc = vz;
+    let va = M(c.VC * sp, "va"); actF(vz, c.VC * sp, va, act);
+    if (keep) cache.va = va;
+    let h1 = M(c.VH, "vh1");
+    matVec(P.vf1, P.b_vf1, va, c.VH, c.VC * sp, h1);
+    if (keep) cache.vf1 = h1;
+    let h1a = M(c.VH, "vh1a"); actF(h1, c.VH, h1a, act);
+    if (keep) cache.vf1a = h1a;
+    let vo = M(1, "vo");
+    matVec(P.vf2, P.b_vf2, h1a, 1, c.VH, vo);
+    const v = Math.tanh(vo[0]);
+    if (keep) { cache.vo = vo[0]; cache.v = v; }
+
+    return { logits: logits, probs: probs, v: v, cache: cache };
+  }
+
+  // dLogits: dL/dlogits (长度 W);  dv: dL/dv (标量)
+  function backward(net, f, dLogits, dv, G) {
+    const c = net.cfg, K = c.K, H = c.H, W = c.W, sp = H * W, P = net.p, act = c.act;
+    const k = f.cache;
+    // value: tanh
+    const dv0 = dv * (1 - k.v * k.v);
+    const tmp1 = new Float64Array(c.VH);
+    outerAdd(G.vf2, G.b_vf2, k.vf1a, [dv0], 1, c.VH);
+    matVecT(P.vf2, [dv0], 1, c.VH, tmp1);
+    const dvf1 = new Float64Array(c.VH); actB(k.vf1, tmp1, c.VH, dvf1, act);
+    const dva = new Float64Array(c.VC * sp);
+    outerAdd(G.vf1, G.b_vf1, k.va, dvf1, c.VH, c.VC * sp);
+    matVecT(P.vf1, dvf1, c.VH, c.VC * sp, dva);
+    const dvc = new Float64Array(c.VC * sp); actB(k.vc, dva, c.VC * sp, dvc, act);
+    let dLast = new Float64Array(K * sp);
+    convB(k.last, P.vc, dvc, K, c.VC, H, W, 1, 0, dLast, G.vc, G.b_vc);
+
+    // policy
+    const dpa = new Float64Array(c.PC * sp);
+    outerAdd(G.pf, G.b_pf, k.pa, dLogits, W, c.PC * sp);
+    matVecT(P.pf, dLogits, W, c.PC * sp, dpa);
+    const dpc = new Float64Array(c.PC * sp); actB(k.pc, dpa, c.PC * sp, dpc, act);
+    const dLast2 = new Float64Array(K * sp);
+    convB(k.last, P.pc, dpc, K, c.PC, H, W, 1, 0, dLast2, G.pc, G.b_pc);
+    for (let i = 0; i < K * sp; i++) dLast[i] += dLast2[i];
+
+    // blocks
+    for (let i = c.NB - 1; i >= 0; i--) {
+      const b = k.blk[i];
+      const dPre = new Float64Array(K * sp); actB(b.pre, dLast, K * sp, dPre, act);
+      const dP2 = dPre.slice();       // 进 conv b
+      const dSkip = dPre.slice();     // 残差
+      const dA1 = new Float64Array(K * sp);
+      convB(b.a1, P["r" + i + "b"], dP2, K, K, H, W, 3, 1, dA1, G["r" + i + "b"], G["b_r" + i + "b"]);
+      const dP1 = new Float64Array(K * sp); actB(b.p1, dA1, K * sp, dP1, act);
+      const dInp = new Float64Array(K * sp);
+      convB(b.inp, P["r" + i + "a"], dP1, K, K, H, W, 3, 1, dInp, G["r" + i + "a"], G["b_r" + i + "a"]);
+      for (let j = 0; j < K * sp; j++) dLast[j] = dSkip[j] + dInp[j];
+    }
+    const dCin = new Float64Array(K * sp); actB(k.cin, dLast, K * sp, dCin, act);
+    const dPlanes = new Float64Array(2 * sp);
+    convB(k.planes, P.cin, dCin, 2, K, H, W, 3, 1, dPlanes, G.cin, G.b_cin);
+    return dPlanes;
+  }
+
+  function zeroGrads(net) {
+    for (const nm of net.keys) net.g[nm].fill(0);
+  }
+  function adamStep(net, lr, l2, b1, b2, eps) {
+    b1 = b1 == null ? 0.9 : b1; b2 = b2 == null ? 0.999 : b2; eps = eps || 1e-8;
+    net.t++;
+    const c1 = 1 - Math.pow(b1, net.t), c2 = 1 - Math.pow(b2, net.t);
+    for (const nm of net.keys) {
+      const p = net.p[nm], g = net.g[nm], m = net.m[nm], v = net.vv[nm];
+      for (let i = 0; i < p.length; i++) {
+        let gi = g[i];
+        if (l2) gi += l2 * p[i];
+        m[i] = b1 * m[i] + (1 - b1) * gi;
+        v[i] = b2 * v[i] + (1 - b2) * gi * gi;
+        p[i] -= lr * (m[i] / c1) / (Math.sqrt(v[i] / c2) + eps);
+      }
+    }
+  }
+  function nParams(net) { let n = 0; for (const k of net.keys) n += net.p[k].length; return n; }
+
+  /* ---------------- Connect-4 ---------------- */
+  const R = 6, C = 7, SZ = 42;
+  function newGame() { return { b: new Int8Array(SZ), h: new Int8Array(C), turn: 1, done: false, res: 0, nm: 0 }; }
+  function cloneG(g) {
+    return { b: g.b.slice(), h: g.h.slice(), turn: g.turn, done: g.done, res: g.res, nm: g.nm };
+  }
+  function legal(g) { const m = []; for (let c = 0; c < C; c++) if (g.h[c] < R) m.push(c); return m; }
+  function legalMask(g) { const m = new Float64Array(C); for (let c = 0; c < C; c++) m[c] = g.h[c] < R ? 1 : 0; return m; }
+  function winAt(b, i) {
+    const r = (i / C) | 0, c = i % C, p = b[i];
+    const dr = [0, 1, 1, 1], dc = [1, 0, 1, -1];
+    for (let d = 0; d < 4; d++) {
+      let n = 1;
+      for (let s = 1; s < 4; s++) {
+        const rr = r + dr[d] * s, cc = c + dc[d] * s;
+        if (rr < 0 || rr >= R || cc < 0 || cc >= C || b[rr * C + cc] !== p) break;
+        n++;
+      }
+      for (let s = 1; s < 4; s++) {
+        const rr = r - dr[d] * s, cc = c - dc[d] * s;
+        if (rr < 0 || rr >= R || cc < 0 || cc >= C || b[rr * C + cc] !== p) break;
+        n++;
+      }
+      if (n >= 4) return true;
+    }
+    return false;
+  }
+  function play(g, col) {
+    if (g.done || col < 0 || col >= C || g.h[col] >= R) return false;
+    const r = g.h[col]++, i = r * C + col;
+    g.b[i] = g.turn; g.nm++;
+    if (winAt(g.b, i)) { g.done = true; g.res = g.turn; }
+    else if (g.nm >= SZ) { g.done = true; g.res = 3; }
+    else g.turn = 3 - g.turn;
+    return true;
+  }
+  // 立即获胜列（针对 p），若无返回 -1
+  function winMove(g, p) {
+    for (let c = 0; c < C; c++) {
+      if (g.h[c] >= R) continue;
+      const t = cloneG(g);
+      t.turn = p; t.res = 0; t.done = false;
+      const r = t.h[c]++, i = r * C + c;
+      t.b[i] = p; t.nm++;
+      if (winAt(t.b, i)) return c;
+    }
+    return -1;
+  }
+  function encode(g, out) {
+    const o = out || new Float64Array(2 * SZ);
+    for (let i = 0; i < SZ; i++) {
+      o[i] = g.b[i] === g.turn ? 1 : 0;
+      o[SZ + i] = g.b[i] === (3 - g.turn) ? 1 : 0;
+    }
+    return o;
+  }
+  function boardStr(g) {
+    const ch = [" . ", " X ", " O "];
+    let s = "";
+    for (let r = R - 1; r >= 0; r--) {
+      s += "|";
+      for (let c = 0; c < C; c++) s += ch[g.b[r * C + c]];
+      s += "|\n";
+    }
+    s += "+" + Array(C + 1).join("---") + "+\n ";
+    for (let c = 0; c < C; c++) s += " " + c + "  ";
+    return s;
+  }
+  // 从 42 字符/数组构造局面（board 顺序 r*C+c）
+  function gameFrom(b, turn) {
+    const g = newGame();
+    for (let i = 0; i < SZ; i++) if (b[i]) { g.b[i] = b[i]; g.h[i % C] = Math.max(g.h[i % C], ((i / C) | 0) + 1); g.nm++; }
+    // 高度必须与列内连续填充一致
+    for (let c = 0; c < C; c++) {
+      let h = 0;
+      for (let r = 0; r < R; r++) { if (g.b[r * C + c]) h = r + 1; else break; }
+      g.h[c] = h;
+    }
+    g.turn = turn || 1;
+    const last = lastMove(g);
+    g.done = false; g.res = 0;
+    if (last >= 0 && winAt(g.b, last)) { g.done = true; g.res = g.b[last]; }
+    else if (g.nm >= SZ) { g.done = true; g.res = 3; }
+    return g;
+  }
+  function lastMove(g) {
+    // 最高的一颗非空子（按高度推断最后一步未必唯一，仅用于造测试局面）
+    let best = -1, br = -1;
+    for (let i = 0; i < SZ; i++) if (g.b[i]) { const r = (i / C) | 0; if (r > br) { br = r; best = i; } }
+    return best;
+  }
+
+  /* ---------------- MCTS (PUCT) ---------------- */
+  function newChild(parent, move, player) {
+    return { parent: parent, move: move, player: player, P: null, N: null, Wv: null, Q: null, ch: null, legal: null, exp: false };
+  }
+  function normMasked(probs, g) {
+    const p = new Float64Array(C); let s = 0;
+    for (let c = 0; c < C; c++) { const v = g.h[c] < R ? probs[c] : 0; p[c] = v; s += v; }
+    if (s > 0) for (let c = 0; c < C; c++) p[c] /= s;
+    else { const l = legal(g); for (const c of l) p[c] = 1 / l.length; }
+    return p;
+  }
+  function backup(path, vIn) {
+    let x = -vIn;
+    for (let i = path.length - 1; i >= 0; i--) {
+      const e = path[i];
+      e.node.N[e.a] += 1;
+      e.node.Wv[e.a] += x;
+      e.node.Q[e.a] = e.node.Wv[e.a] / e.node.N[e.a];
+      x = -x;
+    }
+  }
+  function simulate(net, g0, root, cpuct) {
+    const g = cloneG(g0), path = [];
+    let node = root;
+    for (; ;) {
+      if (g.done) {
+        // play() 获胜时不翻转 turn，故 g.turn 即最后走棋者（=赢家）。
+        // backup 需要"该终局局面的玩家"视角，即下一位走棋者 = 3-g.turn。
+        const z = g.res === 3 ? 0 : (g.res === g.turn ? -1 : 1);
+        backup(path, z); return;
+      }
+      if (!node.exp) {
+        node.exp = true;
+        node.legal = legal(g);
+        node.N = new Float64Array(C); node.Wv = new Float64Array(C); node.Q = new Float64Array(C);
+        node.ch = new Array(C).fill(null);
+        const pr = forward(net, encode(g), null, false);
+        node.P = normMasked(pr.probs, g);
+        backup(path, pr.v); return;
+      }
+      let sumN = 0;
+      for (const a of node.legal) sumN += node.N[a];
+      const sq = Math.sqrt(sumN + 1e-9);
+      let best = -1, bs = -1e18;
+      for (const a of node.legal) {
+        const u = node.Q[a] + cpuct * node.P[a] * sq / (1 + node.N[a]);
+        if (u > bs) { bs = u; best = a; }
+      }
+      path.push({ node: node, a: best });
+      play(g, best);
+      if (!node.ch[best]) node.ch[best] = newChild(node, best, 3 - node.player);
+      node = node.ch[best];
+    }
+  }
+  function runMCTS(net, g, opt) {
+    opt = opt || {};
+    const sims = opt.sims || 60, cpuct = opt.cpuct == null ? 1.5 : opt.cpuct;
+    const root = newChild(null, -1, g.turn);
+    const pr = forward(net, encode(g), null, false);
+    root.P = normMasked(pr.probs, g);
+    if (opt.noise && opt.rnd) {
+      const d = new Float64Array(C);
+      dirichlet(opt.rnd, opt.alpha || 0.3, C, d);
+      const eps = opt.eps == null ? 0.25 : opt.eps;
+      let s = 0;
+      for (let c = 0; c < C; c++) {
+        root.P[c] = (1 - eps) * root.P[c] + eps * (g.h[c] < R ? d[c] : 0);
+        s += root.P[c];
+      }
+      if (s > 0) for (let c = 0; c < C; c++) root.P[c] /= s;
+    }
+    root.exp = true; root.legal = legal(g);
+    root.N = new Float64Array(C); root.Wv = new Float64Array(C); root.Q = new Float64Array(C);
+    root.ch = new Array(C).fill(null);
+    for (let i = 0; i < sims; i++) simulate(net, g, root, cpuct);
+    return root;
+  }
+  function piFromVisits(root, tau) {
+    const pi = new Float64Array(C);
+    let s = 0;
+    if (tau && tau > 0.001) {
+      for (let c = 0; c < C; c++) { const x = Math.pow(root.N[c], 1 / tau); pi[c] = x; s += x; }
+    } else {
+      let best = -1, bn = -1;
+      const lg = root.legal;
+      for (const c of lg) if (root.N[c] > bn) { bn = root.N[c]; best = c; }
+      if (best >= 0) pi[best] = 1;
+      return pi;
+    }
+    if (s > 0) for (let c = 0; c < C; c++) pi[c] /= s;
+    return pi;
+  }
+
+  /* ---------------- 自我对弈 / 训练 ---------------- */
+  function selfPlay(net, opt) {
+    opt = opt || {};
+    const rnd = opt.rnd || mulberry32(1);
+    const sims = opt.sims || 60, tempMoves = opt.tempMoves == null ? 8 : opt.tempMoves;
+    const aug = opt.augment !== false;
+    const g = newGame(), hist = [];
+    let steps = 0;
+    while (!g.done && steps < 60) {
+      const tau = steps < tempMoves ? 1 : 0;
+      const root = runMCTS(net, g, {
+        sims: sims, rnd: rnd, noise: true,
+        alpha: opt.alpha || 0.3, eps: opt.eps == null ? 0.25 : opt.eps,
+        cpuct: opt.cpuct == null ? 1.5 : opt.cpuct
+      });
+      const pi = piFromVisits(root, tau);
+      hist.push({ planes: encode(g), pi: pi, player: g.turn });
+      if (aug) {   // 水平镜像增强：Connect-4 左右对称，零成本翻倍样本
+        const mp = new Float64Array(2 * SZ), mpi = new Float64Array(C);
+        const pl = encode(g);
+        for (let r = 0; r < R; r++) for (let c = 0; c < C; c++) {
+          mp[r * C + (C - 1 - c)] = pl[r * C + c];
+          mp[SZ + r * C + (C - 1 - c)] = pl[SZ + r * C + c];
+        }
+        for (let c = 0; c < C; c++) mpi[C - 1 - c] = pi[c];
+        hist.push({ planes: mp, pi: mpi, player: g.turn });
+      }
+      // 采样
+      let a = 0;
+      if (tau > 0) {
+        let r = rnd(), acc = 0;
+        for (let c = 0; c < C; c++) { acc += pi[c]; if (r <= acc) { a = c; break; } a = c; }
+      } else {
+        let bn = -1; for (const c of root.legal) if (root.N[c] > bn) { bn = root.N[c]; a = c; }
+      }
+      if (g.h[a] >= R) { const l = legal(g); a = l[Math.floor(rnd() * l.length)]; }
+      play(g, a); steps++;
+    }
+    const r = g.res;
+    for (const h of hist) h.z = (r === 3) ? 0 : (r === h.player ? 1 : -1);
+    return { hist: hist, res: r };
+  }
+
+  function trainStep(net, samples, lr, l2) {
+    zeroGrads(net);
+    let loss = 0;
+    const W = net.cfg.W;
+    for (const s of samples) {
+      const f = forward(net, s.planes, null, true);
+      let ce = 0;
+      for (let a = 0; a < W; a++) ce += -s.pi[a] * Math.log(f.probs[a] + 1e-12);
+      const d = f.v - s.z;
+      loss += ce + d * d;
+      const dL = new Float64Array(W);
+      for (let a = 0; a < W; a++) dL[a] = f.probs[a] - s.pi[a];
+      backward(net, f, dL, 2 * d, net.g);
+    }
+    const n = samples.length || 1;
+    for (const k of net.keys) { const g = net.g[k]; for (let i = 0; i < g.length; i++) g[i] /= n; }
+    adamStep(net, lr, l2 || 0);
+    return loss / n;
+  }
+
+  /* ---------------- 基线 / 竞技场 ---------------- */
+  function randomMove(g, rnd) { const l = legal(g); return l[Math.floor(rnd() * l.length)]; }
+  function greedyMove(g, rnd) { // 一步胜 → 堵对手一步胜 → 否则随机
+    const me = g.turn, op = 3 - me;
+    const w = winMove(g, me); if (w >= 0) return w;
+    const b = winMove(g, op); if (b >= 0) return b;
+    return randomMove(g, rnd);
+  }
+  function mctsMove(net, g, opt) {
+    const root = runMCTS(net, g, opt);
+    let best = -1, bn = -1;
+    for (const c of root.legal) if (root.N[c] > bn) { bn = root.N[c]; best = c; }
+    return best;
+  }
+  // 返回 net 的胜/负/平（net 执 player，默认先手）
+  function arena(net, opp, games, opt) {
+    opt = opt || {};
+    const rnd = opt.rnd || mulberry32(99);
+    let w = 0, l = 0, d = 0;
+    for (let k = 0; k < games; k++) {
+      const g = newGame();
+      const netP = (k % 2 === 0) ? 1 : 2;   // 先后手轮换
+      while (!g.done) {
+        let a;
+        if (g.turn === netP) a = mctsMove(net, g, { sims: opt.sims || 40, cpuct: 1.5 });
+        else a = opp(g, rnd);
+        play(g, a);
+      }
+      const netRes = (g.res === 3) ? 0 : (g.res === netP ? 1 : -1);
+      if (netRes > 0) w++; else if (netRes < 0) l++; else d++;
+    }
+    return { win: w, loss: l, draw: d, rate: (w + 0.5 * d) / games };
+  }
+
+  const IDF = {
+    mulberry32: mulberry32, gauss: gauss, dirichlet: dirichlet,
+    matVec: matVec, matVecT: matVecT, outerAdd: outerAdd,
+    convF: convF, convB: convB, reluF: reluF, reluB: reluB, softmax: softmax,
+    createNet: createNet, forward: forward, backward: backward,
+    zeroGrads: zeroGrads, adamStep: adamStep, nParams: nParams,
+    R: R, C: C, SZ: SZ,
+    newGame: newGame, cloneG: cloneG, legal: legal, legalMask: legalMask,
+    play: play, winAt: winAt, winMove: winMove, encode: encode, boardStr: boardStr,
+    gameFrom: gameFrom,
+    runMCTS: runMCTS, simulate: simulate, piFromVisits: piFromVisits,
+    selfPlay: selfPlay, trainStep: trainStep,
+    randomMove: randomMove, greedyMove: greedyMove, mctsMove: mctsMove, arena: arena
+  };
+  root.IDF = IDF;
+  if (typeof module !== "undefined" && module.exports) module.exports = IDF;
+})(typeof globalThis !== "undefined" ? globalThis : this);
+
+</script>
+<script id="ui">
+/* az-forge UI —— 人机对战 / 自我对弈训练 / MCTS 可视化 / 自检 */
+(function () {
+  "use strict";
+  const IDF = globalThis.IDF;
+  const R = IDF.R, C = IDF.C;
+  const $ = (id) => document.getElementById(id);
+
+  const st = {
+    net: null, game: null, buf: [], rnd: IDF.mulberry32(20260916),
+    training: false, busy: false, games: 0, steps: 0,
+    lossHist: [], lastRoot: null, human: 1, over: false
+  };
+
+  function ensure() {
+    if (!st.net) { st.net = IDF.createNet({ K: 16, nb: 2, seed: 2026 }); st.game = IDF.newGame(); }
+    return st.net;
+  }
+  function log(msg, cls) {
+    const el = $("log"); if (!el) return;
+    const d = document.createElement("div");
+    if (cls) d.className = cls;
+    d.textContent = msg;
+    el.appendChild(d); el.scrollTop = el.scrollHeight;
+    while (el.childNodes.length > 220) el.removeChild(el.firstChild);
+  }
+  function sims() { const s = $("simsSel"); return s ? parseInt(s.value, 10) : 80; }
+
+  /* ---------- 棋盘 ---------- */
+  const CELL = 54, PAD = 8;
+  function drawBoard() {
+    const cv = $("board"); if (!cv) return;
+    const W = C * CELL + PAD * 2, H = R * CELL + PAD * 2;
+    if (cv.width !== W) { cv.width = W; cv.height = H; }
+    const g = cv.getContext("2d");
+    g.fillStyle = "#12306b"; g.fillRect(0, 0, W, H);
+    const g0 = st.game || IDF.newGame();
+    // 获胜高亮
+    let winSet = null;
+    if (g0.done && g0.res !== 3) {
+      winSet = [];
+      for (let i = 0; i < R * C; i++) if (g0.b[i] === g0.res) winSet.push(i);
+    }
+    for (let r = 0; r < R; r++) for (let c = 0; c < C; c++) {
+      const cx = PAD + c * CELL + CELL / 2;
+      const cy = PAD + (R - 1 - r) * CELL + CELL / 2;
+      const v = g0.b[r * C + c];
+      g.beginPath(); g.arc(cx, cy, CELL / 2 - 5, 0, 6.2832);
+      if (v === 0) g.fillStyle = "#0b0d13";
+      else if (v === 1) g.fillStyle = "#e5484d";     // X 红
+      else g.fillStyle = "#f5c518";                   // O 黄
+      g.fill();
+      if (v !== 0 && winSet && winSet.indexOf(r * C + c) >= 0) {
+        g.lineWidth = 3; g.strokeStyle = "#5fd39a"; g.stroke();
+      }
+    }
+  }
+  function drawVisits(root) {
+    const cv = $("visits"); if (!cv) return;
+    const W = cv.clientWidth || 372, H = 116;
+    if (cv.width !== W) { cv.width = W; cv.height = H; }
+    const g = cv.getContext("2d");
+    g.clearRect(0, 0, W, H);
+    if (!root) { g.fillStyle = "#6b7385"; g.font = "12px sans-serif"; g.fillText("（AI 思考后显示）", 8, 20); return; }
+    let mx = 1;
+    for (let c = 0; c < C; c++) mx = Math.max(mx, root.N[c]);
+    const bw = (W - 16) / C;
+    for (let c = 0; c < C; c++) {
+      const n = root.N[c], h = (n / mx) * (H - 40);
+      const full = st.game && st.game.h[c] >= R;
+      g.fillStyle = full ? "#2a2f3d" : (n === mx ? "#4d7cfe" : "#33406b");
+      g.fillRect(8 + c * bw + 4, H - 24 - h, bw - 8, h);
+      g.fillStyle = n === mx ? "#cfe0ff" : "#8b93a7";
+      g.font = "11px ui-monospace,monospace";
+      g.fillText(String(n), 8 + c * bw + 6, H - 10);
+      if (root.Q) {
+        g.fillStyle = "#6b7385"; g.font = "10px ui-monospace,monospace";
+        g.fillText(root.Q[c].toFixed(2), 8 + c * bw + 4, H - 30 - h);
+      }
+    }
+  }
+  function drawCurve() {
+    const cv = $("curve"); if (!cv) return;
+    const W = cv.clientWidth || 372, H = 96;
+    if (cv.width !== W) { cv.width = W; cv.height = H; }
+    const g = cv.getContext("2d");
+    g.clearRect(0, 0, W, H);
+    const h = st.lossHist;
+    if (h.length < 2) { g.fillStyle = "#6b7385"; g.font = "12px sans-serif"; g.fillText("（训练后显示 loss 曲线）", 8, 20); return; }
+    let mn = 1e9, mx = -1e9;
+    for (const v of h) { mn = Math.min(mn, v); mx = Math.max(mx, v); }
+    if (mx - mn < 1e-9) mx = mn + 1;
+    g.strokeStyle = "#4d7cfe"; g.lineWidth = 1.6; g.beginPath();
+    for (let i = 0; i < h.length; i++) {
+      const x = 6 + (i / (h.length - 1)) * (W - 12);
+      const y = H - 16 - ((h[i] - mn) / (mx - mn)) * (H - 30);
+      if (i === 0) g.moveTo(x, y); else g.lineTo(x, y);
+    }
+    g.stroke();
+    g.fillStyle = "#6b7385"; g.font = "10px ui-monospace,monospace";
+    g.fillText(mx.toFixed(3), 6, 12); g.fillText(mn.toFixed(3), 6, H - 4);
+  }
+
+  /* ---------- 状态 ---------- */
+  function status() {
+    if (!$("stGames")) return;
+    $("stGames").textContent = st.games;
+    $("stSteps").textContent = st.steps;
+    $("stBuf").textContent = st.buf.length;
+    $("stLoss").textContent = st.lossHist.length ? st.lossHist[st.lossHist.length - 1].toFixed(4) : "—";
+    const g0 = st.game;
+    const el = $("stTurn");
+    if (el) {
+      if (!g0 || !g0.done) el.innerHTML = g0 && g0.turn === st.human
+        ? '<span class="win">轮到你（红）</span>' : '<span class="lose">AI 思考中…</span>';
+      else if (g0.res === 3) el.innerHTML = '<span class="draw">平局</span>';
+      else el.innerHTML = g0.res === st.human ? '<span class="win">你赢了</span>' : '<span class="lose">AI 获胜</span>';
+    }
+  }
+
+  /* ---------- 对局 ---------- */
+  function newGame(keepNet) {
+    if (!keepNet) st.net = null;
+    ensure();
+    st.game = IDF.newGame(); st.over = false; st.lastRoot = null;
+    drawBoard(); drawVisits(null); status();
+  }
+  async function aiMove() {
+    const net = ensure();
+    if (st.game.done || st.busy) return;
+    st.busy = true; status();
+    await new Promise((r) => setTimeout(r, 20));
+    const root = IDF.runMCTS(net, st.game, { sims: sims() });
+    st.lastRoot = root;
+    drawVisits(root);
+    let best = -1, bn = -1;
+    for (const c of root.legal) if (root.N[c] > bn) { bn = root.N[c]; best = c; }
+    IDF.play(st.game, best);
+    st.busy = false;
+    drawBoard(); status();
+  }
+  function humanMove(col) {
+    const g0 = st.game;
+    if (!g0 || g0.done || st.busy || st.training) return;
+    if (g0.turn !== st.human) return;
+    if (!IDF.play(g0, col)) return;
+    drawBoard(); status();
+    if (!g0.done) aiMove();
+  }
+
+  /* ---------- 训练 ---------- */
+  function trainChunk(total) {
+    if (!st.training || st.stepNo >= total) { st.training = false; setTrainUI(); log("训练" + (st.stepNo >= total ? "完成" : "已停止"), "ok"); return; }
+    const net = ensure();
+    const sp = IDF.selfPlay(net, { sims: Math.max(24, sims() >> 1), rnd: st.rnd, tempMoves: 8 });
+    for (const h of sp.hist) st.buf.push(h);
+    if (st.buf.length > 12000) st.buf.splice(0, st.buf.length - 12000);
+    const steps = 5, bs = 24;
+    for (let s = 0; s < steps; s++) {
+      const b = [];
+      for (let i = 0; i < bs; i++) b.push(st.buf[Math.floor(st.rnd() * st.buf.length)]);
+      const L = IDF.trainStep(net, b, 2e-3, 1e-4);
+      st.lossHist.push(L); st.steps++;
+      if (st.lossHist.length > 400) st.lossHist.shift();
+    }
+    st.games++; st.stepNo++;
+    if (st.games % 5 === 0) {
+      log("第 " + st.games + " 局  loss=" + st.lossHist[st.lossHist.length - 1].toFixed(4) + "  样本=" + st.buf.length, "hi");
+      drawCurve();
+    }
+    status();
+    setTimeout(() => trainChunk(total), 0);
+  }
+  function setTrainUI() {
+    const b = $("btnTrain"), s = $("btnStop");
+    if (b) b.disabled = st.training;
+    if (s) s.disabled = !st.training;
+  }
+  function startTrain() {
+    ensure();
+    st.training = true; st.stepNo = 0; setTrainUI();
+    log("开始自我对弈训练（" + ($("iterIn") ? $("iterIn").value : 40) + " 局）…", "hi");
+    trainChunk(parseInt($("iterIn") ? $("iterIn").value : "40", 10));
+  }
+  function stopTrain() { st.training = false; setTrainUI(); log("停止中…"); }
+
+  /* ---------- 评估 ---------- */
+  function evaluate() {
+    const net = ensure();
+    log("评估中（vs 随机 / vs 贪心 各 12 局）…");
+    setTimeout(() => {
+      const a = IDF.arena(net, IDF.randomMove, 12, { sims: Math.max(24, sims() >> 1), rnd: IDF.mulberry32(7) });
+      const b = IDF.arena(net, IDF.greedyMove, 12, { sims: Math.max(24, sims() >> 1), rnd: IDF.mulberry32(8) });
+      $("stWin").textContent = (a.rate * 100).toFixed(0) + "%";
+      $("stGrd").textContent = (b.rate * 100).toFixed(0) + "%";
+      log("vs 随机 " + a.win + "胜" + a.loss + "负" + a.draw + "平 → 得分率 " + (a.rate * 100).toFixed(1) + "%", a.rate > 0.8 ? "ok" : "no");
+      log("vs 贪心 " + b.win + "胜" + b.loss + "负" + b.draw + "平 → 得分率 " + (b.rate * 100).toFixed(1) + "%", b.rate > 0.5 ? "ok" : "no");
+    }, 30);
+  }
+
+  /* ---------- 自检 ---------- */
+  function runSelftest() {
+    const out = $("testOut"); if (!out) return;
+    out.innerHTML = "";
+    const ok = (n, c, i) => {
+      const d = document.createElement("div");
+      d.innerHTML = (c ? '<span class="ok">✓</span> ' : '<span class="no">✗</span> ') + n + (i ? '  <span style="color:#6b7385">' + i + '</span>' : '');
+      out.appendChild(d);
+      return c ? 1 : 0;
+    };
+    let p = 0, t = 0;
+    const idx = (r, c) => r * 7 + c;
+    const mk = (pairs, v) => { const b = new Int8Array(42); for (const i of pairs) b[i] = v; return b; };
+    // 1 规则
+    t++; p += ok("四连判定（横/竖/正对角/反对角）",
+      IDF.winAt(mk([idx(0, 0), idx(0, 1), idx(0, 2), idx(0, 3)], 1), idx(0, 3)) &&
+      IDF.winAt(mk([idx(0, 2), idx(1, 2), idx(2, 2), idx(3, 2)], 2), idx(3, 2)) &&
+      IDF.winAt(mk([0, 8, 16, 24], 1), 24) &&
+      IDF.winAt(mk([idx(0, 3), idx(1, 2), idx(2, 1), idx(3, 0)], 2), idx(3, 0)));
+    t++; p += ok("三连不算胜 & 行末不回绕",
+      !IDF.winAt(mk([idx(0, 0), idx(0, 1), idx(0, 2)], 1), idx(0, 2)) &&
+      !IDF.winAt(mk([idx(0, 4), idx(0, 5), idx(0, 6), idx(1, 0)], 1), idx(1, 0)));
+    // 2 编码
+    t++; {
+      const g = IDF.newGame(); IDF.play(g, 3); IDF.play(g, 5);
+      const e = IDF.encode(g); let good = true;
+      for (let i = 0; i < 42; i++) if (e[i] + e[42 + i] > (g.b[i] ? 1 : 0) + 1e-12) good = false;
+      if (!(e[3] === 1 && e[42 + 3] === 0)) good = false; // turn=2 视角: 列3是对方
+      p += ok("编码 planes：两通道互补、己方/对方分离", good);
+    }
+    // 3 MCTS 不变量
+    t++; {
+      const net = ensure(), g = IDF.newGame();
+      for (const c of [3, 3, 4]) IDF.play(g, c);
+      const root = IDF.runMCTS(net, g, { sims: 60 });
+      let s = 0, bad = 0;
+      for (let c = 0; c < C; c++) { s += root.N[c]; if (g.h[c] >= R && root.N[c] !== 0) bad++; }
+      p += ok("MCTS：Σ访问 = 模拟次数 且非法列为 0", s === 60 && bad === 0, "ΣN=" + s);
+    }
+    t++; {
+      const net = ensure(), g = IDF.newGame();
+      const root = IDF.runMCTS(net, g, { sims: 40 });
+      const pi = IDF.piFromVisits(root, 1);
+      let s = 0; for (let c = 0; c < C; c++) s += pi[c];
+      p += ok("π 归一化 = 1", Math.abs(s - 1) < 1e-12);
+    }
+    // 4 战术
+    t++; {
+      const net = ensure();
+      const g = IDF.gameFrom(mk([idx(0, 0), idx(0, 1), idx(0, 2)], 1), 1);
+      const root = IDF.runMCTS(net, g, { sims: 200 });
+      let best = -1, bn = -1; for (const c of root.legal) if (root.N[c] > bn) { bn = root.N[c]; best = c; }
+      p += ok("战术·一步胜 → 选 col3", best === 3, "选=" + best + " Q=" + root.Q[best].toFixed(2));
+    }
+    t++; {
+      const net = ensure();
+      const g = IDF.gameFrom(mk([idx(0, 0), idx(0, 1), idx(0, 2)], 2), 1);
+      const root = IDF.runMCTS(net, g, { sims: 500 });
+      let best = -1, bn = -1; for (const c of root.legal) if (root.N[c] > bn) { bn = root.N[c]; best = c; }
+      p += ok("战术·必防 → 堵 col3", best === 3, "选=" + best + " Q=" + root.Q[best].toFixed(2));
+    }
+    // 5 梯度检验（FD 金标准）
+    t++; {
+      const net = IDF.createNet({ K: 8, nb: 1, seed: 5, act: "tanh" });
+      const g = IDF.newGame(); IDF.play(g, 3); IDF.play(g, 2);
+      const piT = new Float64Array(C); const lg = IDF.legal(g); for (const c of lg) piT[c] = 1 / lg.length;
+      const planes = IDF.encode(g), z = 0.5, eps = 1e-6;
+      const L = () => {
+        const f = IDF.forward(net, planes, null, false);
+        let ce = 0; for (let a = 0; a < C; a++) ce += -piT[a] * Math.log(f.probs[a] + 1e-12);
+        const d = f.v - z; return ce + d * d;
+      };
+      IDF.zeroGrads(net);
+      const f = IDF.forward(net, planes, null, true);
+      const dL = new Float64Array(C); for (let a = 0; a < C; a++) dL[a] = f.probs[a] - piT[a];
+      IDF.backward(net, f, dL, 2 * (f.v - z), net.g);
+      let worst = 0, nm = "", inf = 0;
+      const sr = IDF.mulberry32(9);
+      for (const k of net.keys) {
+        const arr = net.p[k], gg = net.g[k];
+        for (let s = 0; s < 2; s++) {
+          const i = Math.floor(sr() * arr.length) % arr.length, o = arr[i];
+          arr[i] = o + eps; const lp = L(); arr[i] = o - eps; const lm = L(); arr[i] = o;
+          const num = (lp - lm) / (2 * eps), ana = gg[i];
+          if (Math.max(Math.abs(num), Math.abs(ana)) <= 1e-8) continue;
+          inf++;
+          const r = Math.abs(num - ana) / (Math.abs(num) + Math.abs(ana));
+          if (r > worst) { worst = r; nm = k + "[" + i + "]"; }
+        }
+      }
+      p += ok("梯度检验（光滑网络 FD，金标准）", worst < 1e-4 && inf >= 6,
+        "maxRel=" + worst.toExponential(2) + " @" + nm + " 样本=" + inf);
+    }
+    // 6 前向确定性
+    t++; {
+      const net = ensure(), g = IDF.newGame(); IDF.play(g, 1);
+      const a = IDF.forward(net, IDF.encode(g), null, false);
+      const b = IDF.forward(net, IDF.encode(g), null, false);
+      let same = a.v === b.v; for (let i = 0; i < C; i++) if (a.probs[i] !== b.probs[i]) same = false;
+      p += ok("前向确定性（同输入 → 同输出）", same);
+    }
+
+    const sum = $("testSum");
+    if (sum) sum.innerHTML = '<span class="pill">' + p + " / " + t + (p === t ? " 全部通过" : " 有失败") + "</span>";
+    log("自检 " + p + "/" + t + (p === t ? " 全部通过" : " 存在失败"), p === t ? "ok" : "no");
+  }
+
+  /* ---------- 绑定 ---------- */
+  function bind() {
+    const cv = $("board");
+    if (cv) cv.addEventListener("click", (e) => {
+      const r = cv.getBoundingClientRect();
+      const col = Math.floor((e.clientX - r.left - PAD) / CELL);
+      if (col >= 0 && col < C) humanMove(col);
+    });
+    const b = (id, fn) => { const el = $(id); if (el) el.onclick = fn; };
+    b("btnNew", () => { newGame(true); log("新对局（保留已训练权重）"); });
+    b("btnReset", () => { newGame(false); st.buf = []; st.lossHist = []; st.games = 0; st.steps = 0; drawCurve(); log("已重置网络与缓冲"); status(); });
+    b("btnTrain", startTrain);
+    b("btnStop", stopTrain);
+    b("btnEval", evaluate);
+    b("btnTest", runSelftest);
+    drawBoard(); drawVisits(null); drawCurve(); status(); setTrainUI();
+    log("就绪：点棋盘落子（你执红先手），或点「开始训练」让 AI 自我博弈。");
+  }
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", bind);
+  else bind();
+})();
+
+</script>
+</body>
+</html>
