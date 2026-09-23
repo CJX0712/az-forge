@@ -1,5 +1,12 @@
 # az-forge
 
+<p align="center">
+  <a href="https://github.com/CJX0712/az-forge/actions/workflows/ci.yml"><img src="https://github.com/CJX0712/az-forge/actions/workflows/ci.yml/badge.svg" alt="ci"></a>
+  <a href="https://github.com/CJX0712/az-forge/releases"><img src="https://img.shields.io/github/v/release/CJX0712/az-forge?sort=semver" alt="release"></a>
+  <a href="https://github.com/CJX0712/az-forge/blob/main/LICENSE"><img src="https://img.shields.io/github/license/CJX0712/az-forge" alt="license"></a>
+  <img src="https://img.shields.io/badge/author-%E6%99%A8%E6%98%9F-1f6feb" alt="author">
+</p>
+
 **AlphaZero 风格自我对弈 + MCTS，从零学会下 Connect-4。零依赖单文件 HTML，浏览器内训练。**
 
 不喂任何人类棋谱、不查任何开局库、不做任何规则硬编码的策略——只有一个随机初始化的神经网络和一棵搜索树。
